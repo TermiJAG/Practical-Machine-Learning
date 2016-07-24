@@ -1,0 +1,135 @@
+---
+title: "Practical Machine Learning - Prediction Assignment"
+author: "TermiJAG"
+date: "Sunday, July 24, 2016"
+output: html_document
+---
+
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Data
+
+The training data for this project are available here:
+  
+  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+  
+  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+  
+###Data Processing
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(caret)
+library(tree)
+```
+Loading datasets from local folder
+```{r}
+set.seed(12345)
+setwd("C://Users//Jascha//Desktop")
+trainData = read.csv("pml-training.csv", na.strings=c("", "NA", "NULL"))
+testData = read.csv("pml-testing.csv", na.strings=c("", "NA", "NULL"))
+```
+Removing variables with too many NAs
+```{r}
+trainingSet <- trainData[ , colSums(is.na(trainData)) == 0]
+```
+There are some irrelevant variables that can be removed
+```{r}
+removeVars = c('X', 'user_name', 'raw_timestamp_part_1', 'raw_timestamp_part_2', 'cvtd_timestamp', 'new_window', 'num_window')
+trainingSet<- trainingSet[, -which(names(trainingSet) %in% removeVars)]
+```
+Check for numeric variables with low variance
+```{r}
+zeroVar= nearZeroVar(trainingSet[sapply(trainingSet, is.numeric)], saveMetrics = TRUE)
+trainingSet= trainingSet[,zeroVar[, 'nzv']==0]
+```
+Remove highly correlated variables
+```{r}
+corrMatrix <- cor(na.omit(trainingSet[sapply(trainingSet, is.numeric)]))
+removecorrelated = findCorrelation(corrMatrix, cutoff = .90, verbose = TRUE)
+trainingSet= trainingSet[,-removecorrelated]
+dim(trainingSet)
+```
+After cleaning the dataset we are left with 19622 samples of 46 variables.
+### Cross Validation
+Splitting the training set 70/30 for cross validation.
+```{r}
+inTrain <- createDataPartition(y=trainingSet$classe, p=0.7, list=FALSE)
+training <- trainingSet[inTrain,];
+testing <- trainingSet[-inTrain,]
+dim(training)
+dim(testing)
+```
+##Analysis
+###Regression Tree
+We analyse the data with the tree package and plot it
+```{r}
+library(tree)
+set.seed(12345)
+tree.training=tree(classe~.,data=training)
+summary(tree.training)
+```
+```{r}
+plot(tree.training)
+text(tree.training,pretty=0, cex =.8)
+```
+###RPart method from Caret
+Second analysis is carried out using RPart from the Caret package
+```{r}
+rpartFit <- train(classe ~ .,method="rpart",data=training)
+print(rpartFit$finalModel)
+```
+```{r}
+library(rattle)
+fancyRpartPlot(rpartFit$finalModel)
+```
+
+We get a similar result for the Rpart method are similar to the results from Tree package
+
+###Random Forests
+The third method is Random Forests
+```{r}
+require(randomForest)
+set.seed(12345)
+rf.training=randomForest(classe~.,data=training,ntree=100, importance=TRUE)
+rf.training
+```
+
+```{r}
+varImpPlot(rf.training,)
+```
+
+We can see the impact the variables have on the prediction.
+
+###Cross Validation
+
+We are checking the performance by cross validation using the test set of the original training set.
+```{r}
+#Tree
+tree.pred=predict(tree.training,testing,type="class")
+predMatrix = with(testing,table(tree.pred,classe))
+sum(diag(predMatrix))/sum(as.vector(predMatrix)) 
+```
+```{r}
+#RPart
+tree.pred=predict(rpartFit,testing)
+predMatrix = with(testing,table(tree.pred,classe))
+sum(diag(predMatrix))/sum(as.vector(predMatrix))
+```
+```{r}
+#Random Forest
+tree.pred=predict(rf.training,testing,type="class")
+predMatrix = with(testing,table(tree.pred,classe))
+sum(diag(predMatrix))/sum(as.vector(predMatrix))
+```
+The results from Caret are much more accurate than the results from Tree. However the Random Forest method is by far superior to the other two.
+
+##Conclusion
+We can predict the testing data using the random forest method.
+```{r}
+answers <- predict(rf.training, testData)
+answers
+```
+Submitting the results to the website in the quiz gives us 20/20 points. Good Model.
